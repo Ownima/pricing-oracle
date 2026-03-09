@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pricing_oracle
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/pricing_oracle
+      PRICING_AGENT_NETWORK: testnet
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn pricing_oracle.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  uagent:
+    build: .
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/pricing_oracle
+      PRICING_AGENT_NETWORK: testnet
+      PRICING_AGENT_PORT: "8001"
+      PRICING_AGENT_DOMAIN: http://localhost:8001
+      AGENTVERSE_KEY: ${AGENTVERSE_KEY:-}
+      AGENT_SEED_PHRASE: ${AGENT_SEED_PHRASE:-pricing-oracle-seed-phrase}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python -m pricing_oracle.uagent
+
+volumes:
+  postgres_data:
