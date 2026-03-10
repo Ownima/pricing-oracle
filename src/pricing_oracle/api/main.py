@@ -8,8 +8,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query
 from sqlmodel import SQLModel, create_engine
 
-from pricing_oracle.models import CategoryEnum
-from pricing_oracle.service import CompetitorPricingService
+from src.pricing_oracle.models import CategoryEnum
+from src.pricing_oracle.service import CompetitorPricingService
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",

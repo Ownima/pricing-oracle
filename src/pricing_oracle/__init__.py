@@ -1,12 +1,12 @@
 """Pricing Oracle - Market Intelligence Service."""
 
-from pricing_oracle.adapters import (
+from src.pricing_oracle.adapters import (
     AdapterConfig,
     AdapterRegistry,
     PriceAdapter,
     RawListing,
 )
-from pricing_oracle.models import (
+from src.pricing_oracle.models import (
     CategoryEnum,
     CompetitorListing,
     Country,
@@ -15,7 +15,7 @@ from pricing_oracle.models import (
     SourceTypeEnum,
     SuggestedPrices,
 )
-from pricing_oracle.service import CompetitorPricingService
+from src.pricing_oracle.service import CompetitorPricingService
 
 __all__ = [
     "AdapterConfig",

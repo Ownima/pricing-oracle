@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from pricing_oracle.adapters.base import PriceAdapter
+from src.pricing_oracle.adapters.base import PriceAdapter
 
 logger = logging.getLogger(__name__)
 

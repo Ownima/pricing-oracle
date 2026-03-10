@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from sqlmodel import Session, func, select
 
-from pricing_oracle.models import (
+from src.pricing_oracle.models import (
     CategoryEnum,
     CompetitorListing,
     MarketSnapshot,
@@ -52,8 +52,7 @@ class CompetitorPricingService:
         query = select(CompetitorListing).where(
             CompetitorListing.category == category,
             CompetitorListing.country_id == country_id,
-            CompetitorListing.ingested_at
-            >= datetime.utcnow() - timedelta(days=30),
+            CompetitorListing.ingested_at >= datetime.utcnow() - timedelta(days=30),
         )
 
         if region_id:
@@ -96,11 +95,11 @@ class CompetitorPricingService:
         """Calculate suggested prices using IQR method."""
         if len(prices) < 4:
             margin = 0.1
-            return SuggestedPrices(
-                economy=int(median * (1 - margin)),
-                market=int(median),
-                economy=int(median * (1 + margin)),
-            )
+        return SuggestedPrices(
+            economy=int(median * (1 - margin)),
+            market=int(median),
+            premium=int(median * (1 + margin)),
+        )
 
         q1 = self._percentile(prices, 0.25)
         q3 = self._percentile(prices, 0.75)
