@@ -47,7 +47,7 @@ dev = [
 [project.scripts]
 pricing-oracle = "pricing_oracle.cli.main:main"
 pricing-oracle-api = "pricing_oracle.api.main:run"
-pricing-oracle-uagent = "pricing_oracle.uagent.main:main"
+pricing-oracle-uagent = "pricing_oracle.uagent.agent:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
