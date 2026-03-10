@@ -213,19 +213,6 @@ async def handle_price_post(req, query: PricingQuery) -> PricingResponse:
     return await get_price_suggestion(query.category, query.country, query.tier)
 
 
-@pricing_agent.on_rest_get("/price", PricingResponse)
-async def handle_price_get(req) -> PricingResponse:
-    """Handle price query via REST GET."""
-    category = req.query_params.get("category", "scooter_150")
-    tier = req.query_params.get("tier", "market")
-    country = req.query_params.get("country", "TH")
-    action = req.query_params.get("action", "price")
-
-    if action == "snapshot":
-        return await get_market_snapshot(category, country)
-    return await get_price_suggestion(category, country, tier)
-
-
 # Create chat protocol for AgentVerse/ASI-One compatibility
 # Using manual protocol instead of chat_protocol_spec to avoid verification issues
 from uagents_core.contrib.protocols.chat import (
@@ -237,10 +224,19 @@ from uagents_core.contrib.protocols.chat import (
 chat_protocol = Protocol("AgentChatProtocol", "0.3.0")
 
 
-@chat_protocol.on_message(ChatMessage)
+@chat_protocol.on_message(ChatMessage, replies=ChatAcknowledgement)
 async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
     """Handle incoming chat messages from AgentVerse/ASI-One."""
     ctx.logger.info(f"Received chat message from {sender}: {msg}")
+
+    # Immediately acknowledge the message (required by chat protocol)
+    await ctx.send(
+        sender,
+        ChatAcknowledgement(
+            timestamp=msg.timestamp,
+            acknowledged_msg_id=msg.msg_id,
+        ),
+    )
 
     user_text = ""
     if msg.content:
@@ -282,18 +278,9 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
 # Note: chat_protocol verification can fail in some environments due to uAgents bug
 pricing_agent.include(pricing_protocol)
 
-import logging
-
-try:
-    pricing_agent.include(chat_protocol, publish_manifest=True)
-    logging.info("Chat protocol included successfully")
-except RuntimeError as e:
-    if "failed verification" in str(e):
-        logging.warning(f"Chat protocol verification failed - using REST only: {e}")
-    else:
-        raise
-except Exception as e:
-    logging.warning(f"Chat protocol include failed (will use REST only): {e}")
+# Include protocols
+pricing_agent.include(pricing_protocol)
+pricing_agent.include(chat_protocol, publish_manifest=True)
 
 
 # Startup handler
