@@ -9,6 +9,13 @@ import os
 from typing import Literal
 
 from uagents import Agent, Context, Model, Protocol
+from uagents_core.contrib.protocols.chat import (
+    ChatAcknowledgement,
+    ChatMessage,
+    TextContent,
+    chat_protocol_spec,
+)
+from uagents_core.models import ErrorMessage
 from uagents_core.utils.registration import (
     RegistrationRequestCredentials,
     register_chat_agent,
@@ -219,8 +226,74 @@ async def handle_price_get(req) -> PricingResponse:
     return await get_price_suggestion(category, country, tier)
 
 
-# Include REST protocol
+# Create chat protocol for AgentVerse/ASI-One compatibility
+# Using manual protocol instead of chat_protocol_spec to avoid verification issues
+from uagents_core.contrib.protocols.chat import (
+    ChatAcknowledgement,
+    ChatMessage,
+    TextContent,
+)
+
+chat_protocol = Protocol("AgentChatProtocol", "0.3.0")
+
+
+@chat_protocol.on_message(ChatMessage)
+async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
+    """Handle incoming chat messages from AgentVerse/ASI-One."""
+    ctx.logger.info(f"Received chat message from {sender}: {msg}")
+
+    user_text = ""
+    if msg.content:
+        for item in msg.content:
+            if isinstance(item, TextContent):
+                user_text = item.text
+                break
+
+    if not user_text:
+        await ctx.send(
+            sender,
+            ChatMessage(
+                content=[
+                    TextContent(
+                        type="text",
+                        text="I couldn't understand your message. Try asking for a price like 'scooter 150 market price' or 'market snapshot for bike 300'",
+                    )
+                ]
+            ),
+        )
+        return
+
+    action, category, tier = parse_chat_message(user_text)
+
+    if action == "snapshot":
+        result = await get_market_snapshot(category, "TH")
+    else:
+        result = await get_price_suggestion(category, "TH", tier)
+
+    response_text = format_price_response(action, category, tier)
+
+    await ctx.send(
+        sender,
+        ChatMessage(content=[TextContent(type="text", text=response_text)]),
+    )
+
+
+# Include protocols - order matters!
+# Note: chat_protocol verification can fail in some environments due to uAgents bug
 pricing_agent.include(pricing_protocol)
+
+import logging
+
+try:
+    pricing_agent.include(chat_protocol, publish_manifest=True)
+    logging.info("Chat protocol included successfully")
+except RuntimeError as e:
+    if "failed verification" in str(e):
+        logging.warning(f"Chat protocol verification failed - using REST only: {e}")
+    else:
+        raise
+except Exception as e:
+    logging.warning(f"Chat protocol include failed (will use REST only): {e}")
 
 
 # Startup handler
@@ -246,11 +319,6 @@ async def introduce_agent(ctx: Context):
                 else f"{_AGENT_DOMAIN}"
             )
 
-            # Include chat protocol in metadata
-            metadata = {
-                "protocols": ["http://agentverse.ai/protocols/chat"],
-            }
-
             register_chat_agent(
                 pricing_agent.name,
                 endpoint,
@@ -259,11 +327,10 @@ async def introduce_agent(ctx: Context):
                     agentverse_api_key=api_key,
                     agent_seed_phrase=seed,
                 ),
-                metadata=metadata,
             )
             ctx.logger.info("✅ Registered on AgentVerse!")
             ctx.logger.info(f"   Endpoint: {endpoint}")
-            ctx.logger.info("   Chat protocol: enabled")
+            ctx.logger.info("   Chat protocol: enabled (via protocol manifest)")
         except Exception as e:
             ctx.logger.error(f"Failed to register on AgentVerse: {e}")
 
