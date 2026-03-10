@@ -67,7 +67,7 @@ def _create_agent() -> Agent:
         seed=AGENT_SEED,
         port=AGENT_PORT,
         network=network,
-        endpoint=[f"{_AGENT_DOMAIN}/submit"],
+        endpoint=[f"{_AGENT_DOMAIN}/webhook"],
     )
 
 
@@ -291,9 +291,9 @@ async def introduce_agent(ctx: Context):
     ctx.logger.info(f"My address: {pricing_agent.address}")
     ctx.logger.info(f"Network: {_AGENT_NETWORK}")
     ctx.logger.info(f"Domain: {_AGENT_DOMAIN}")
-    ctx.logger.info(f"Endpoint: {_AGENT_DOMAIN}/submit")
+    ctx.logger.info(f"Endpoint: {_AGENT_DOMAIN}/webhook")
     ctx.logger.info(f"Agent ready on port {AGENT_PORT}")
-    ctx.logger.info("REST endpoints: /health, /price (GET/POST)")
+    ctx.logger.info("REST endpoints: /health, /price (POST)")
 
     api_key = os.getenv("AGENTVERSE_KEY") or os.getenv("ILABS_AGENTVERSE_API_KEY")
     seed = os.getenv("AGENT_SEED_PHRASE", AGENT_SEED)
@@ -303,7 +303,7 @@ async def introduce_agent(ctx: Context):
             endpoint = (
                 pricing_agent._endpoints[0].url
                 if pricing_agent._endpoints
-                else f"{_AGENT_DOMAIN}"
+                else f"{_AGENT_DOMAIN}/webhook"
             )
 
             register_chat_agent(
@@ -314,10 +314,22 @@ async def introduce_agent(ctx: Context):
                     agentverse_api_key=api_key,
                     agent_seed_phrase=seed,
                 ),
+                readme="# Pricing Oracle Agent\n\n"
+                "Market intelligence for vehicle rental pricing in Thailand and Vietnam.\n\n"
+                "## Capabilities\n"
+                "- Get price suggestions for scooter, bike, and car rentals\n"
+                "- Market snapshot with IQR-based analytics\n"
+                "- Supports TH (Thailand) and VN (Vietnam)\n\n"
+                "## Usage\n"
+                "Send a message like 'scooter 150 market price' or 'bike 300 economy'",
+                metadata={
+                    "categories": "pricing,vehicle,rental,thailand,vietnam",
+                    "is_public": "True",
+                },
             )
             ctx.logger.info("✅ Registered on AgentVerse!")
             ctx.logger.info(f"   Endpoint: {endpoint}")
-            ctx.logger.info("   Chat protocol: enabled (via protocol manifest)")
+            ctx.logger.info("   Chat protocol: enabled")
         except Exception as e:
             ctx.logger.error(f"Failed to register on AgentVerse: {e}")
 
