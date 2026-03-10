@@ -18,7 +18,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from src.pricing_oracle.auth.eip712 import WalletAuth
+from pricing_oracle.auth.eip712 import WalletAuth
 
 console = Console()
 

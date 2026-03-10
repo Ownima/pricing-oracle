@@ -13,8 +13,8 @@ from typing import Any
 from a2a.types import AgentCard, AgentSkill, Message, TextPart
 from pydantic import BaseModel
 
-from src.pricing_oracle.models import CategoryEnum
-from src.pricing_oracle.service import CompetitorPricingService
+from pricing_oracle.models import CategoryEnum
+from pricing_oracle.service import CompetitorPricingService
 
 logger = logging.getLogger(__name__)
 

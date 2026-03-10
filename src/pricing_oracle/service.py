@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from sqlmodel import Session, func, select
 
-from src.pricing_oracle.models import (
+from pricing_oracle.models import (
     CategoryEnum,
     CompetitorListing,
     MarketSnapshot,
