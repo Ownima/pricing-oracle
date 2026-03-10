@@ -306,15 +306,24 @@ Price: {price:,} THB/month""",
                 await self.suggest_price()
 
 
-async def main() -> None:
+async def async_main() -> None:
     """Main entry point."""
     cli = PricingOracleCLI()
     await cli.run()
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Sync entry point for CLI."""
     try:
-        asyncio.run(main())
+        asyncio.run(async_main())
     except KeyboardInterrupt:
         console.print("\n\n[bold cyan]Interrupted. Goodbye![/bold cyan]\n")
         sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
+
+
+if __name__ == "__main__":
+    main()
