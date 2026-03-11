@@ -224,6 +224,14 @@ from uagents_core.contrib.protocols.chat import (
 chat_protocol = Protocol("chat", "1.0")
 
 
+@chat_protocol.on_message(ChatAcknowledgement)
+async def handle_chat_acknowledgement(
+    ctx: Context, sender: str, msg: ChatAcknowledgement
+):
+    """Handle chat acknowledgments from AgentVerse."""
+    ctx.logger.info(f"Received acknowledgment from {sender}: {msg}")
+
+
 @chat_protocol.on_message(ChatMessage)
 async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
     """Handle incoming chat messages from AgentVerse/ASI-One."""
@@ -316,8 +324,9 @@ async def introduce_agent(ctx: Context):
                 "Send a message like 'scooter 150 market price' or 'bike 300 economy'",
                 description=(
                     "Market intelligence for vehicle rental pricing across Thailand and Vietnam. "
-                    "Get competitive analysis, price suggestions via A2A protocol."),
-                metadata = {
+                    "Get competitive analysis, price suggestions via A2A protocol."
+                ),
+                metadata={
                     "categories": ["pricing", "market", "snapshot"],
                     "is_public": "True",
                     "tags": [
