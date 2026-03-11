@@ -182,7 +182,7 @@ class PricingOracleAgent:
         if not request.category:
             return self._error_response("Category required for snapshot")
 
-        snapshot = self.service.get_market_snapshot(request.category)
+        snapshot = await self.service.get_market_snapshot(request.category)
 
         if snapshot.status == "insufficient_data":
             return {
@@ -241,7 +241,7 @@ class PricingOracleAgent:
         if not request.category:
             return self._error_response("Category required for suggestion")
 
-        snapshot = self.service.get_market_snapshot(request.category)
+        snapshot = await self.service.get_market_snapshot(request.category)
 
         if not snapshot.suggested:
             return {

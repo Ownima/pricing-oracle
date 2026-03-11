@@ -56,7 +56,7 @@ async def get_market_snapshot(
 
     with Session(engine) as session:
         service = CompetitorPricingService(session)
-        snapshot = service.get_market_snapshot(cat_enum, country, region)
+        snapshot = await service.get_market_snapshot(cat_enum, country, region)
 
     return snapshot.to_dict()
 
@@ -79,7 +79,7 @@ async def suggest_price(
 
     with Session(engine) as session:
         service = CompetitorPricingService(session)
-        result = service.get_price_suggestion(cat_enum, tier, country, region)
+        result = await service.get_price_suggestion(cat_enum, tier, country, region)
 
     return result
 
