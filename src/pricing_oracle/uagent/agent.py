@@ -314,9 +314,20 @@ async def introduce_agent(ctx: Context):
                 "- Supports TH (Thailand) and VN (Vietnam)\n\n"
                 "## Usage\n"
                 "Send a message like 'scooter 150 market price' or 'bike 300 economy'",
-                metadata={
-                    "categories": "pricing,vehicle,rental,thailand,vietnam",
+                metadata = {
+                    "categories": ["pricing", "market", "snapshot"],
                     "is_public": "True",
+                    "tags": [
+                        "analytics",
+                        "automation",
+                        "competitive",
+                        "market",
+                        "marketing",
+                        "oracle",
+                        "pricing",
+                        "rental",
+                        "sales",
+                    ],
                 },
             )
             ctx.logger.info("✅ Registered on AgentVerse!")
