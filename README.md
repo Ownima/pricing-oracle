@@ -7,7 +7,7 @@
 
 ## Overview
 
-Pricing Oracle is a standalone service that provides competitive pricing intelligence for vehicle rental businesses. It collects data from multiple sources, analyzes market trends, and provides price suggestions.
+Pricing Oracle is a standalone service that provides competitive pricing intelligence for vehicle rental businesses. It collects data from multiple sources, analyzes market trends, and provides price suggestions via REST API, A2A protocol, and Fetch.ai uAgent.
 
 ## Features
 
@@ -20,17 +20,40 @@ Pricing Oracle is a standalone service that provides competitive pricing intelli
 
 ## Supported Categories
 
-| Category | Description |
-|----------|-------------|
-| `SCOOTER_110_125CC` | Scooter 110-125cc |
-| `SCOOTER_150_300CC` | Scooter 150-300cc |
-| `BIKE_300CC_PLUS` | Motorcycle 300cc+ |
-| `CAR_ECONOMY` | Economy cars |
+| Category | Description | Example |
+|----------|-------------|---------|
+| `scooter_110` | Scooter 110cc | "scooter 110 economy" |
+| `scooter_150` | Scooter 150cc | "scooter 150 market" |
+| `bike_300` | Motorcycle 300cc+ | "bike 300 premium" |
+| `car_economy` | Economy cars | "car economy" |
 
 ## Supported Countries
 
 - Thailand (TH) - Production
 - Vietnam (VN) - Coming soon
+
+## Supported Commands
+
+### Price Queries
+- "scooter 110 economy" - Get economy price for 110cc scooter
+- "scooter 150 market price" - Get market price for 150cc scooter
+- "bike 300 premium" - Get premium price for 300cc bike
+- "car economy" - Get economy price for car rental
+
+### Market Analytics
+- "market snapshot" - Get full market analytics with IQR
+- "market snapshot for bike 300" - Get analytics for specific category
+
+### General
+- "info" or "help" - Get documentation
+- "what markets do you support?" - List supported markets
+- "what vehicles do you support?" - List vehicle types
+
+## Response Tiers
+
+- **Economy**: Budget-friendly pricing (25% below median)
+- **Market**: Competitive median pricing
+- **Premium**: Premium service pricing (25% above median)
 
 ## Installation
 
@@ -48,79 +71,56 @@ Environment variables:
 | `PRICING_AGENT_NETWORK` | Network (testnet/mainnet) | `testnet` |
 | `PRICING_AGENT_DOMAIN` | Agent domain | `http://localhost:8000` |
 | `AGENTVERSE_KEY` | AgentVerse API key | - |
+| `AGENT_SEED_PHRASE` | Agent seed phrase | pricing-oracle-seed-phrase-for-agentverse |
 
 ## Usage
-
-### REST API
-
-```bash
-# Start the API server
-uv run uvicorn pricing_oracle.api.main:app --reload
-
-# Get market snapshot
-curl "http://localhost:8000/v1/market/snapshot?country=TH&category=SCOOTER_150_300CC"
-
-# Get price suggestion
-curl "http://localhost:8000/v1/pricing/suggest?country=TH&category=SCOOTER_150_300CC&tier=market"
-```
 
 ### uAgent (AgentVerse)
 
 ```bash
 # Start the uAgent
-AGENTVERSE_KEY=your_key uv run python -m pricing_oracle.uagent
+uv run pricing-oracle-uagent
 
-# Or use docker
-docker-compose up uagent
+# Register on AgentVerse (run separately after agent starts)
+uv run pricing-oracle-register
+```
+
+### REST API
+
+```bash
+# Start the API server
+uv run pricing-oracle-api
+
+# Get price suggestion (POST)
+curl -X POST http://localhost:8000/price \
+  -H "Content-Type: application/json" \
+  -d '{"category": "scooter_150", "tier": "market", "country": "TH"}'
+
+# Health check
+curl http://localhost:8000/health
 ```
 
 ### CLI Demo
 
 ```bash
-uv run python -m pricing_oracle.cli
+uv run pricing-oracle
 ```
 
 ## API Endpoints
 
-### GET /health
+### POST /price
 
-Health check.
+Get price suggestion for a vehicle category.
 
-### GET /v1/market/snapshot
-
-Get market statistics for a category.
-
-**Parameters:**
-- `country` (str): Country code (TH, VN)
-- `category` (str): Vehicle category
-- `region` (str, optional): Region ID
-
-**Response:**
+**Request:**
 ```json
 {
-  "category": "SCOOTER_150_300CC",
-  "count": 45,
-  "median": 8500,
-  "min": 6000,
-  "max": 12000,
-  "suggested": {
-    "economy": 7500,
-    "market": 8500,
-    "premium": 9500
-  },
-  "status": "success"
+  "category": "scooter_150",
+  "tier": "market",
+  "country": "TH",
+  "action": "price"
 }
 ```
-
-### GET /v1/pricing/suggest
-
-Get price suggestion for a tier.
-
-**Parameters:**
-- `country` (str): Country code
-- `category` (str): Vehicle category
-- `tier` (str): Pricing tier (economy/market/premium)
-- `region` (str, optional): Region ID
 
 **Response:**
 ```json
@@ -128,10 +128,43 @@ Get price suggestion for a tier.
   "status": "success",
   "price": 8500,
   "currency": "THB",
-  "category": "SCOOTER_150_300CC",
+  "category": "scooter_150",
   "country": "TH",
   "tier": "market"
 }
+```
+
+### GET /health
+
+Health check.
+
+**Response:**
+```json
+{
+  "status": "success"
+}
+```
+
+## AgentVerse Integration
+
+The Pricing Oracle is registered as a Fetch.ai uAgent on AgentVerse:
+
+- **Protocol**: AgentChatProtocol v0.3.0
+- **Network**: Fetch.ai Testnet
+- **Endpoint**: `/submit`
+
+### Registration
+
+Registration is handled separately to avoid timing issues:
+
+```bash
+# 1. Start the agent
+uv run pricing-oracle-uagent
+
+# 2. Wait for agent to initialize (5+ seconds)
+
+# 3. Register separately
+uv run pricing-oracle-register
 ```
 
 ## Architecture
@@ -149,6 +182,31 @@ Get price suggestion for a tier.
 │              │   PostgreSQL DB     │                │
 │              └─────────────────────┘                │
 └─────────────────────────────────────────────────────────┘
+```
+
+## Deployment
+
+### Docker Compose
+
+```bash
+# Start all services
+docker-compose up -d
+
+# Start only API
+docker-compose up api
+
+# Start uAgent
+AGENTVERSE_KEY=your_key docker-compose up uagent
+```
+
+### Environment Variables for Production
+
+```bash
+DATABASE_URL=postgresql://user:pass@host:5432/pricing_oracle
+PRICING_AGENT_NETWORK=mainnet
+PRICING_AGENT_DOMAIN=https://pricing.yourdomain.com
+AGENTVERSE_KEY=your_agentverse_key
+AGENT_SEED_PHRASE=your_seed_phrase
 ```
 
 ## Development
@@ -177,30 +235,6 @@ ruff format .
 
 # Type check
 mypy pricing_oracle
-```
-
-## Deployment
-
-### Docker Compose
-
-```bash
-# Start all services
-docker-compose up -d
-
-# Start only API
-docker-compose up api
-
-# Start uAgent
-AGENTVERSE_KEY=your_key docker-compose up uagent
-```
-
-### Environment Variables for Production
-
-```bash
-DATABASE_URL=postgresql://user:pass@host:5432/pricing_oracle
-PRICING_AGENT_NETWORK=mainnet
-PRICING_AGENT_DOMAIN=https://pricing.yourdomain.com
-AGENTVERSE_KEY=your_agentverse_key
 ```
 
 ## License

@@ -219,9 +219,36 @@ from uagents_core.contrib.protocols.chat import (
     ChatAcknowledgement,
     ChatMessage,
     TextContent,
+    StartSessionContent,
+    EndSessionContent,
+    MetadataContent,
+)
+
+from pricing_oracle.uagent.registration import (
+    AGENT_DESCRIPTION,
+    AGENT_METADATA,
+    AGENT_README,
 )
 
 chat_protocol = Protocol("chat", "1.0")
+
+
+@chat_protocol.on_message(StartSessionContent)
+async def handle_session_start(ctx: Context, sender: str, msg: StartSessionContent):
+    """Handle session start from AgentVerse."""
+    ctx.logger.info(f"Session started with {sender}")
+
+
+@chat_protocol.on_message(EndSessionContent)
+async def handle_session_end(ctx: Context, sender: str, msg: EndSessionContent):
+    """Handle session end from AgentVerse."""
+    ctx.logger.info(f"Session ended with {sender}")
+
+
+@chat_protocol.on_message(MetadataContent)
+async def handle_metadata(ctx: Context, sender: str, msg: MetadataContent):
+    """Handle metadata from AgentVerse."""
+    ctx.logger.info(f"Received metadata from {sender}: {msg.metadata}")
 
 
 @chat_protocol.on_message(ChatAcknowledgement)
@@ -261,10 +288,32 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
                 content=[
                     TextContent(
                         type="text",
-                        text="I couldn't understand your message. Try asking for a price like 'scooter 150 market price' or 'market snapshot for bike 300'",
+                        text="I couldn't understand your message. Try 'info' for documentation or 'scooter 150 market price' for pricing.",
                     )
                 ]
             ),
+        )
+        return
+
+    # Check for info/help queries
+    user_text_lower = user_text.lower().strip()
+    if any(
+        word in user_text_lower
+        for word in [
+            "info",
+            "help",
+            "documentation",
+            "readme",
+            "capabilities",
+            "what do you support",
+            "what markets",
+            "what vehicles",
+        ]
+    ):
+        response_text = get_info_response()
+        await ctx.send(
+            sender,
+            ChatMessage(content=[TextContent(type="text", text=response_text)]),
         )
         return
 
@@ -281,6 +330,51 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
         sender,
         ChatMessage(content=[TextContent(type="text", text=response_text)]),
     )
+
+
+def get_info_response() -> str:
+    """Generate comprehensive agent information response."""
+    return """# Pricing Oracle Agent
+
+I provide market intelligence for vehicle rental pricing in Thailand and Vietnam.
+
+## Capabilities
+- Price suggestions for scooter, bike, and car rentals
+- IQR-based market analytics
+- Multi-market support: Thailand (TH), Vietnam (VN)
+
+## Supported Commands
+
+### Price Queries
+- "scooter 110 economy" - 110cc scooter economy price
+- "scooter 150 market" - 150cc scooter market price
+- "bike 300 premium" - 300cc bike premium price
+- "car economy" - Economy car rental price
+
+### Market Analytics
+- "market snapshot" - Full market analytics
+- "market snapshot for bike 300" - Category-specific analytics
+
+### General
+- "info" or "help" - This documentation
+- "what markets?" - List supported markets
+- "what vehicles?" - List vehicle types
+
+## API Endpoints
+- POST /price - Get pricing (category, tier, country)
+- GET /health - Health check
+
+## Response Tiers
+- Economy: 25% below median
+- Market: Competitive median
+- Premium: 25% above median
+
+## Vehicle Categories
+- Scooters: 110cc, 150cc
+- Bikes: 300cc
+- Cars: Economy, Standard, Premium
+
+For more details, visit: https://ownima.com"""
 
 
 # Startup handler
@@ -314,33 +408,9 @@ async def introduce_agent(ctx: Context):
                     agentverse_api_key=api_key,
                     agent_seed_phrase=seed,
                 ),
-                readme="# Pricing Oracle Agent\n\n"
-                "Market intelligence for vehicle rental pricing in Thailand and Vietnam.\n\n"
-                "## Capabilities\n"
-                "- Get price suggestions for scooter, bike, and car rentals\n"
-                "- Market snapshot with IQR-based analytics\n"
-                "- Supports TH (Thailand) and VN (Vietnam)\n\n"
-                "## Usage\n"
-                "Send a message like 'scooter 150 market price' or 'bike 300 economy'",
-                description=(
-                    "Market intelligence for vehicle rental pricing across Thailand and Vietnam. "
-                    "Get competitive analysis, price suggestions via A2A protocol."
-                ),
-                metadata={
-                    "categories": ["pricing", "market", "snapshot"],
-                    "is_public": "True",
-                    "tags": [
-                        "analytics",
-                        "automation",
-                        "competitive",
-                        "market",
-                        "marketing",
-                        "oracle",
-                        "pricing",
-                        "rental",
-                        "sales",
-                    ],
-                },
+                readme=AGENT_README,
+                description=AGENT_DESCRIPTION,
+                metadata=AGENT_METADATA,
             )
             ctx.logger.info("✅ Registered on AgentVerse!")
             ctx.logger.info(f"   Endpoint: {endpoint}")

@@ -14,6 +14,11 @@ from pricing_oracle.uagent.agent import (
     _AGENT_DOMAIN,
     _AGENT_NETWORK,
 )
+from pricing_oracle.uagent.registration import (
+    AGENT_DESCRIPTION,
+    AGENT_METADATA,
+    AGENT_README,
+)
 
 console = Console()
 
@@ -72,18 +77,9 @@ def main() -> None:
                 agentverse_api_key=api_key,
                 agent_seed_phrase=seed,
             ),
-            readme="# Pricing Oracle Agent\n\n"
-            "Market intelligence for vehicle rental pricing in Thailand and Vietnam.\n\n"
-            "## Capabilities\n"
-            "- Get price suggestions for scooter, bike, and car rentals\n"
-            "- Market snapshot with IQR-based analytics\n"
-            "- Supports TH (Thailand) and VN (Vietnam)\n\n"
-            "## Usage\n"
-            "Send a message like 'scooter 150 market price' or 'bike 300 economy'",
-            metadata={
-                "categories": "pricing,vehicle,rental,thailand,vietnam",
-                "is_public": "True",
-            },
+            readme=AGENT_README,
+            description=AGENT_DESCRIPTION,
+            metadata=AGENT_METADATA,
         )
 
         console.print("[bold green]Registration successful![/bold green]")
