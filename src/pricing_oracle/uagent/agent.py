@@ -67,7 +67,7 @@ def _create_agent() -> Agent:
         seed=AGENT_SEED,
         port=AGENT_PORT,
         network=network,
-        endpoint=[f"{_AGENT_DOMAIN}/webhook"],
+        endpoint=[f"{_AGENT_DOMAIN}/submit"],
     )
 
 
@@ -291,7 +291,7 @@ async def introduce_agent(ctx: Context):
     ctx.logger.info(f"My address: {pricing_agent.address}")
     ctx.logger.info(f"Network: {_AGENT_NETWORK}")
     ctx.logger.info(f"Domain: {_AGENT_DOMAIN}")
-    ctx.logger.info(f"Endpoint: {_AGENT_DOMAIN}/webhook")
+    ctx.logger.info(f"Endpoint: {_AGENT_DOMAIN}/submit")
     ctx.logger.info(f"Agent ready on port {AGENT_PORT}")
     ctx.logger.info("REST endpoints: /health, /price (POST)")
 
@@ -303,7 +303,7 @@ async def introduce_agent(ctx: Context):
             endpoint = (
                 pricing_agent._endpoints[0].url
                 if pricing_agent._endpoints
-                else f"{_AGENT_DOMAIN}/webhook"
+                else f"{_AGENT_DOMAIN}/submit"
             )
 
             register_chat_agent(
