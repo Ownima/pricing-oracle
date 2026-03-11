@@ -314,6 +314,9 @@ async def introduce_agent(ctx: Context):
                 "- Supports TH (Thailand) and VN (Vietnam)\n\n"
                 "## Usage\n"
                 "Send a message like 'scooter 150 market price' or 'bike 300 economy'",
+                description=(
+                    "Market intelligence for vehicle rental pricing across Thailand and Vietnam. "
+                    "Get competitive analysis, price suggestions via A2A protocol."),
                 metadata = {
                     "categories": ["pricing", "market", "snapshot"],
                     "is_public": "True",
