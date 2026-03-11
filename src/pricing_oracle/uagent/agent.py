@@ -5,6 +5,7 @@ Integrates the pricing oracle as a Fetch.ai uAgent for AgentVerse marketplace.
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Literal
 
@@ -20,6 +21,26 @@ from uagents_core.utils.registration import (
     RegistrationRequestCredentials,
     register_chat_agent,
 )
+
+# Configure logging to capture invalid HTTP request details
+_request_logger = logging.getLogger("uvicorn.error")
+_handler = logging.StreamHandler()
+_handler.setFormatter(
+    logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+)
+_request_logger.addHandler(_handler)
+
+
+def _setup_request_logging():
+    """Set up logging for invalid HTTP requests."""
+    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+    logging.getLogger("h11").setLevel(logging.DEBUG)
+
+    h11_logger = logging.getLogger("h11")
+    h11_handler = logging.StreamHandler()
+    h11_handler.setFormatter(logging.Formatter("[H11] %(asctime)s | %(message)s"))
+    h11_logger.addHandler(h11_handler)
+
 
 # Agent configuration
 AGENT_NAME = os.getenv("PRICING_AGENT_NAME", "pricing-oracle")
@@ -449,6 +470,7 @@ async def introduce_agent(ctx: Context):
 
 def main():
     """Run the pricing oracle agent."""
+    _setup_request_logging()
     pricing_agent.include(pricing_protocol)
     pricing_agent.include(chat_protocol, publish_manifest=True)
     pricing_agent.run()
