@@ -214,7 +214,6 @@ async def handle_price_post(req, query: PricingQuery) -> PricingResponse:
 
 
 # Create chat protocol for AgentVerse/ASI-One compatibility
-# Using manual protocol instead of chat_protocol_spec to avoid verification issues
 from uagents_core.contrib.protocols.chat import (
     ChatAcknowledgement,
     ChatMessage,
@@ -224,7 +223,7 @@ from uagents_core.contrib.protocols.chat import (
 chat_protocol = Protocol("AgentChatProtocol", "0.3.0")
 
 
-@chat_protocol.on_message(ChatMessage, replies=ChatAcknowledgement)
+@chat_protocol.on_message(ChatMessage)
 async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
     """Handle incoming chat messages from AgentVerse/ASI-One."""
     ctx.logger.info(f"Received chat message from {sender}: {msg}")
@@ -272,15 +271,6 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
         sender,
         ChatMessage(content=[TextContent(type="text", text=response_text)]),
     )
-
-
-# Include protocols - order matters!
-# Note: chat_protocol verification can fail in some environments due to uAgents bug
-pricing_agent.include(pricing_protocol)
-
-# Include protocols
-pricing_agent.include(pricing_protocol)
-pricing_agent.include(chat_protocol, publish_manifest=True)
 
 
 # Startup handler
@@ -336,6 +326,8 @@ async def introduce_agent(ctx: Context):
 
 def main():
     """Run the pricing oracle agent."""
+    pricing_agent.include(pricing_protocol)
+    pricing_agent.include(chat_protocol, publish_manifest=True)
     pricing_agent.run()
 
 
