@@ -57,18 +57,6 @@ class PricingResponse(Model):
     error: str | None = None
 
 
-class PricingChatRequest(Model):
-    """Chat request model for pricing oracle."""
-
-    text: str
-
-
-class PricingChatResponse(Model):
-    """Chat response model for pricing oracle."""
-
-    text: str
-
-
 def _create_agent() -> Agent:
     """Create agent with proper network setting."""
     network: Literal["mainnet", "testnet"] = (
@@ -225,23 +213,49 @@ async def handle_price_post(req, query: PricingQuery) -> PricingResponse:
     return await get_price_suggestion(query.category, query.country, query.tier)
 
 
-# Create custom chat protocol for AgentVerse/ASI-One compatibility
-# Using custom models instead of ChatMessage to avoid verification issues
-chat_protocol = Protocol("pricing-chat", "1.0.0")
+# Create chat protocol for AgentVerse/ASI-One compatibility
+# Using manual protocol with 'chat' name that passes verification
+from uagents_core.contrib.protocols.chat import (
+    ChatAcknowledgement,
+    ChatMessage,
+    TextContent,
+)
+
+chat_protocol = Protocol("chat", "1.0")
 
 
-@chat_protocol.on_message(PricingChatRequest, replies={PricingChatResponse})
-async def handle_chat_message(ctx: Context, sender: str, msg: PricingChatRequest):
+@chat_protocol.on_message(ChatMessage)
+async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
     """Handle incoming chat messages from AgentVerse/ASI-One."""
-    ctx.logger.info(f"Received chat message from {sender}: {msg.text}")
+    ctx.logger.info(f"Received chat message from {sender}: {msg}")
 
-    user_text = msg.text
+    # Extract text from ChatMessage content
+    user_text = ""
+    if msg.content:
+        for item in msg.content:
+            if isinstance(item, TextContent):
+                user_text = item.text
+                break
+
+    # Send acknowledgment (required by chat protocol)
+    await ctx.send(
+        sender,
+        ChatAcknowledgement(
+            timestamp=msg.timestamp,
+            acknowledged_msg_id=msg.msg_id,
+        ),
+    )
 
     if not user_text:
         await ctx.send(
             sender,
-            PricingChatResponse(
-                text="I couldn't understand your message. Try asking for a price like 'scooter 150 market price' or 'market snapshot for bike 300'"
+            ChatMessage(
+                content=[
+                    TextContent(
+                        type="text",
+                        text="I couldn't understand your message. Try asking for a price like 'scooter 150 market price' or 'market snapshot for bike 300'",
+                    )
+                ]
             ),
         )
         return
@@ -257,7 +271,7 @@ async def handle_chat_message(ctx: Context, sender: str, msg: PricingChatRequest
 
     await ctx.send(
         sender,
-        PricingChatResponse(text=response_text),
+        ChatMessage(content=[TextContent(type="text", text=response_text)]),
     )
 
 
