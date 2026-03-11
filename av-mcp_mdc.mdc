@@ -1,0 +1,511 @@
+---
+description: "Agentverse + uAgents (v0.22.9) and uAgents-core (v0.3.9) — Cursor rules to build correct Hosted, Local, and Mailbox agents with the Agent Chat Protocol, ExternalStorage, media workflows, tmp URL staging, and QuotaProtocol."
+globs:
+  - "**/*"
+alwaysApply: false
+---
+
+# Agentverse + uAgents (v0.22.9) — Cursor .mdc Rules
+
+## PURPOSE
+These rules make Cursor generate precise, production-ready **uAgents** for **Fetch.ai Agentverse**.  
+They **lock** the **Agent Chat Protocol** structure, enforce **allowed libraries** for **Hosted Agents**, and provide **ready-to-run templates** and **checklists** for **Hosted**, **Local**, and **Mailbox** agents.
+
+Authoritative patterns mirror the Innovation Lab / Agentverse guides (chat protocol, image analysis, image generation, and agent creation). Do not drift from them.  
+(References: image analysis, image generation, and agent creation docs.)  
+<!-- Sources used when authoring these rules:
+- Image Analysis agent using Chat Protocol & ExternalStorage.
+- Image Generation agent using DALL·E 3 + ExternalStorage.
+- uAgent creation & deployment overview.
+-->
+
+---
+
+## HARD CONSTRAINTS (NEVER BREAK)
+1) **Chat protocol data models are immutable.** Do **not** rename fields, add/remove required fields, or change literal values. Always import and use the exact models:
+
+```python
+from uagents_core.contrib.protocols.chat import (
+  chat_protocol_spec,
+  ChatMessage, ChatAcknowledgement,
+  TextContent, ResourceContent, Resource, MetadataContent,
+  StartSessionContent, EndSessionContent, StartStreamContent, EndStreamContent,
+)
+
+
+ChatMessage(timestamp: datetime, msg_id: UUID4, content: list[AgentContent])
+
+ChatAcknowledgement(timestamp: datetime, acknowledged_msg_id: UUID4, metadata?: dict[str,str])
+
+TextContent(type='text', text: str)
+
+Resource(uri: str, metadata: dict[str,str])
+
+ResourceContent(type='resource', resource_id: UUID4, resource: Resource | list[Resource])
+
+MetadataContent(type='metadata', metadata: dict[str,str])
+
+StartSessionContent(type='start-session'), EndSessionContent(type='end-session')
+
+StartStreamContent(type='start-stream', stream_id: UUID4), EndStreamContent(type='end-stream', stream_id: UUID4)
+
+Version: Target uAgents v0.22.9 semantics & APIs. uAgents-core runtime: v0.3.9.
+
+ACK rhythm: For every incoming ChatMessage, promptly send a ChatAcknowledgement referencing the original msg_id before doing heavier work. Maintain the request → ack → response → ack pattern throughout.
+
+ExternalStorage only for Agentverse storage interactions. Use the official ExternalStorage interface for download/upload and permissions; do not invent storage URIs. (See patterns below.) 
+Fetch.ai Innovation Lab
+
+Do not alter session/stream semantics. If you use streaming, pair StartStreamContent(stream_id) with EndStreamContent(stream_id).
+
+Hosted imports must be from the allowlist. If you need unlisted deps, generate a Mailbox (or Local) variant.
+
+Media (video/audio) with third-party APIs: When a direct-fetchable URL is required, stage bytes to a temporary URL (e.g., via tmpfiles.org) before calling the external API. (Pattern provided below.)
+
+HOSTED STORAGE URL RESOLUTION
+- In Hosted agents, do not rely on `ctx.agent.agentverse_url` (it may not exist on Agentverse Hosted runtime).
+- Resolve the storage URL via environment variable with a safe default, and construct `ExternalStorage` using that value.
+```python
+import os
+from uagents_core.storage import ExternalStorage
+
+AGENTVERSE_URL = os.getenv("AGENTVERSE_URL", "https://agentverse.ai")
+STORAGE_URL = f"{AGENTVERSE_URL}/v1/storage"
+
+# Inside a handler where you have `ctx: Context`:
+storage = ExternalStorage(identity=ctx.agent.identity, storage_url=STORAGE_URL)
+```
+
+AGENT TYPES
+Hosted (Agentverse)
+
+Runs in Agentverse managed environment (uptime/scaling handled by Agentverse).
+
+Use only allowed libraries (see allowlist below).
+
+Perfect for standard HTTP/LLM/data tasks covered by the allowlist.
+
+Local
+
+Runs on your machine/server; you manage uptime, ports, and networking.
+
+Any Python library may be used.
+
+Register on Almanac to interoperate with other agents.
+
+Mailbox (Local + Agentverse connectivity)
+
+Local agent with mailbox=True to connect via secure mailbox channel.
+
+Discoverable in Agentverse; interoperates with Hosted/Local agents.
+
+Use when you require libraries not supported in Hosted mode or need direct local control.
+(Agent creation & deployment overview: see “uagent creation” page.)
+
+Hosted Agents – Supported Libraries
+
+If a dependency is not in these lists, generate a Mailbox or Local agent instead.
+
+Primary:
+
+uagents, uagents-core, agentverse-client
+
+HTTP / LLM / IO / Retry:
+
+requests, httpx, httpx-sse, tenacity, aiohttp, aiohttp-retry, yarl
+
+LLMs / AI SDKs:
+
+openai, anthropic, google-genai, google-ai-generativelanguage, huggingface-hub
+
+LangChain / Graph:
+
+langchain, langchain-anthropic, langchain-community, langchain-core,
+langchain-google-genai, langchain-google-vertexai, langchain-openai,
+langchain-text-splitters, langgraph, langgraph-*, langsmith
+
+Data / Parse / NLP:
+
+pydantic, pydantic-settings, pydantic_core, regex, orjson, tiktoken,
+nltk, pypdf, unstructured, unstructured-client, beautifulsoup4 (bs4),
+lxml, pandas (if present), numpy, pyarrow, python-multipart, filetype
+
+Vector / DB:
+
+faiss-cpu, pymongo, SQLAlchemy, asyncpg
+
+Web3 / Crypto:
+
+web3, eth-*, ecdsa, coincurve, bech32, rlp, eth-typing, eth-utils, eth-account
+
+Utilities & Std support:
+
+validators, backoff, python-dotenv, python-dateutil, rapidfuzz,
+protobuf, google-auth, google-cloud-*, uvicorn, starlette, sse-starlette,
+psutil, tqdm, joblib, packaging, requests-toolbelt, jsonschema, typing-extensions, etc.
+
+(If Hosted import fails at runtime, fall back to Mailbox.)
+
+STANDARD LAYOUTS (Cursor should scaffold like this)
+/hosted/
+  agent.py         # main agent with chat protocol + handlers
+  README.md        # purpose, inputs/outputs, env vars, limitations
+
+/mailbox_or_local/
+  agent.py         # Agent(name, seed, port, mailbox=True for mailbox)
+  services.py      # domain functions (external calls, etc.)
+  README.md
+
+CHAT PROTOCOL — GOLDEN RULES
+
+Import chat_protocol_spec and the exact models from uagents_core.contrib.protocols.chat.
+
+Every outgoing ChatMessage must have:
+
+timestamp=datetime.now(timezone.utc)
+
+msg_id=uuid4()
+
+content=[...] (list of AgentContent items)
+
+ACK every inbound ChatMessage quickly:
+
+await ctx.send(sender, ChatAcknowledgement(
+    timestamp=datetime.now(timezone.utc),
+    acknowledged_msg_id=msg.msg_id
+))
+
+
+On StartSessionContent, optionally advertise capabilities (e.g., attachments) by replying with a MetadataContent message (see patterns below).
+(These behaviors match the official examples.) 
+Fetch.ai Innovation Lab
+
+READY-TO-RUN TEMPLATES
+1) Hosted “Hello Chat” (uAgents 0.22.9)
+```python
+from datetime import datetime, timezone
+from uuid import uuid4
+from uagents import Agent, Context, Protocol
+from uagents_core.contrib.protocols.chat import (
+    chat_protocol_spec,
+    ChatMessage, ChatAcknowledgement,
+    TextContent, StartSessionContent, EndSessionContent,
+)
+
+agent = Agent()  # Hosted: identity & manifest handled by Agentverse
+chat_proto = Protocol(spec=chat_protocol_spec)
+
+def _text(msg: str) -> ChatMessage:
+    return ChatMessage(
+        timestamp=datetime.now(timezone.utc),
+        msg_id=uuid4(),
+        content=[TextContent(type="text", text=msg)]
+    )
+
+@chat_proto.on_message(ChatMessage)
+async def on_chat(ctx: Context, sender: str, msg: ChatMessage):
+    # ACK first
+    await ctx.send(sender, ChatAcknowledgement(
+        timestamp=datetime.now(timezone.utc),
+        acknowledged_msg_id=msg.msg_id,
+    ))
+    for c in msg.content:
+        if isinstance(c, StartSessionContent):
+            ctx.logger.info("Session start")
+        if isinstance(c, TextContent):
+            ctx.logger.info(f"User said: {c.text}")
+            await ctx.send(sender, _text("Hello from Hosted Agent!"))
+
+@chat_proto.on_message(ChatAcknowledgement)
+async def on_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
+    ctx.logger.info(f"ACK from {sender} for {msg.acknowledged_msg_id}")
+
+agent.include(chat_proto, publish_manifest=True)
+if __name__ == "__main__":
+    agent.run()
+```
+
+2) Mailbox Agent + ExternalStorage Download (attachments)
+```python
+import os
+from datetime import datetime, timezone
+from uuid import uuid4
+from uagents import Agent, Context, Protocol
+from uagents_core.storage import ExternalStorage
+from uagents_core.contrib.protocols.chat import (
+    chat_protocol_spec, ChatMessage, ChatAcknowledgement,
+    TextContent, ResourceContent, Resource, MetadataContent,
+    StartSessionContent, EndSessionContent,
+)
+
+STORAGE_URL = os.getenv("AGENTVERSE_URL", "https://agentverse.ai") + "/v1/storage"
+
+agent = Agent(
+    name=os.environ["AGENT_NAME"],
+    seed=os.environ["AGENT_SEED"],
+    port=int(os.environ["PORT"]),
+    mailbox=True
+)
+
+chat = Protocol(spec=chat_protocol_spec)
+
+def _text(t: str): 
+    return ChatMessage(timestamp=datetime.now(timezone.utc),
+                       msg_id=uuid4(),
+                       content=[TextContent(type="text", text=t)])
+
+@chat.on_message(ChatMessage)
+async def on_chat(ctx: Context, sender: str, msg: ChatMessage):
+    await ctx.send(sender, ChatAcknowledgement(
+        timestamp=datetime.now(timezone.utc), acknowledged_msg_id=msg.msg_id))
+    ext = ExternalStorage(identity=ctx.agent.identity, storage_url=STORAGE_URL)
+
+    for c in msg.content:
+        if isinstance(c, StartSessionContent):
+            # Advertise attachment support
+            await ctx.send(sender, ChatMessage(
+                timestamp=datetime.now(timezone.utc), msg_id=uuid4(),
+                content=[MetadataContent(type="metadata", metadata={"attachments":"true"})]
+            ))
+        if isinstance(c, ResourceContent):
+            try:
+                blob = ext.download(str(c.resource_id))  # {"mime_type": "...", "contents": <base64 or bytes>}
+                await ctx.send(sender, _text(f"Downloaded {c.resource_id} ({blob['mime_type']})"))
+            except Exception as e:
+                ctx.logger.error(f"Download failed: {e}")
+                await ctx.send(sender, _text("Failed to download resource."))
+
+@chat.on_message(ChatAcknowledgement)
+async def on_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
+    ctx.logger.info(f"ACK from {sender}")
+
+agent.include(chat, publish_manifest=True)
+if __name__ == "__main__":
+    agent.run()
+```
+
+
+(ExternalStorage pattern aligns with official examples.)
+
+QUOTA / RATE-LIMIT + ACL (Correct Usage)
+
+Use QuotaProtocol to wrap ChatMessage handlers with a RateLimit and an AccessControlList (ACL). Pattern:
+
+```python
+import os
+from datetime import datetime, timezone
+from uuid import uuid4
+from uagents import Agent, Context
+from uagents.experimental.quota import QuotaProtocol, RateLimit, AccessControlList
+from uagents_core.contrib.protocols.chat import (
+    chat_protocol_spec, ChatMessage, ChatAcknowledgement,
+    TextContent, StartSessionContent, EndSessionContent
+)
+
+AGENT_NAME = os.environ["AGENT_NAME"]
+AGENT_PORT = int(os.environ["AGENT_PORT"])  # separate env to avoid confusion with PORT used elsewhere
+AGENT_SEED = os.environ["AGENT_SEED"]
+ALLOWED_AGENT = os.getenv("ALLOWED_AGENT","agent1q...")
+
+agent = Agent(name=AGENT_NAME, port=AGENT_PORT, seed=AGENT_SEED, mailbox=True)
+chat_proto = QuotaProtocol(spec=chat_protocol_spec, storage_reference=agent.storage)
+
+def text_chat(text: str, end_session: bool=False) -> ChatMessage:
+    content = [TextContent(type="text", text=text)]
+    if end_session:
+        content.append(EndSessionContent(type="end-session"))
+    return ChatMessage(timestamp=datetime.now(timezone.utc), msg_id=uuid4(), content=content)
+
+@chat_proto.on_message(
+    ChatMessage,
+    rate_limit=RateLimit(window_size_minutes=1440, max_requests=4),
+    access_control_list=AccessControlList(default=True, bypass_rate_limit={ALLOWED_AGENT}),
+)
+async def on_message(ctx: Context, sender: str, msg: ChatMessage):
+    await ctx.send(sender, ChatAcknowledgement(
+        timestamp=datetime.now(timezone.utc), acknowledged_msg_id=msg.msg_id))
+    for item in msg.content:
+        if isinstance(item, StartSessionContent):
+            await ctx.send(sender, text_chat("Send your query."))
+        if isinstance(item, TextContent):
+            await ctx.send(sender, text_chat(f"Echo: {item.text}"))
+
+@chat_proto.on_message(ChatAcknowledgement)
+async def on_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
+    ctx.logger.info(f"ACK from {sender}")
+
+agent.include(chat_proto, publish_manifest=True)
+if __name__ == "__main__":
+    agent.run()
+```
+
+IMAGE ANALYSIS PATTERN (Text + Image → Claude Vision)
+
+Flow: ACK → (optional) MetadataContent(attachments=true) → download with ExternalStorage → call Claude vision → respond with TextContent.
+(Official example mirrors this structure.)
+
+Key points:
+
+Expect inbound ResourceContent with resource_id for the image.
+
+Download via ExternalStorage(identity=ctx.agent.identity, storage_url=AGENTVERSE_URL + "/v1/storage").download(resource_id)
+
+Build the Claude API request with text + base64 image in one message; handle timeouts & API errors gracefully.
+
+Return a ChatMessage with a single TextContent containing the analysis.
+
+IMAGE GENERATION PATTERN (DALL·E 3 → ExternalStorage → ResourceContent)
+
+Flow: ACK → generate image (OpenAI Images) → download returned URL → upload to ExternalStorage → set permissions for sender → reply with ResourceContent → (optional) EndSessionContent.
+(Official example follows this exact sequence, including the agent-storage:// URI formation and permissioning.) 
+Fetch.ai Innovation Lab
+
+Implementation notes:
+
+Use ExternalStorage(api_token=AGENTVERSE_API_KEY, storage_url=AGENTVERSE_URL + "/v1/storage")
+
+asset_id = external_storage.create_asset(name=str(ctx.session), content=image_bytes, mime_type=content_type)
+
+external_storage.set_permissions(asset_id=asset_id, agent_address=sender)
+
+Reply with:
+
+ChatMessage(
+  timestamp=..., msg_id=uuid4(),
+  content=[ResourceContent(
+    type="resource",
+    resource_id=asset_id,
+    resource=Resource(
+      uri=f"agent-storage://{external_storage.storage_url}/{asset_id}",
+      metadata={"mime_type": "image/png", "role": "generated-image"}
+    )
+  )]
+)
+
+VIDEO/AUDIO: TMP URL STAGING (for APIs that require fetchable media)
+
+For inbound video/audio bytes you receive as ResourceContent, many external services (e.g., certain inference APIs) require a public URL.
+On ASI1, video/audio assets are not compatible; always stage to a temporary URL (e.g., tmpfiles.org) before calling the external API.
+
+Pattern:
+
+ACK the inbound ChatMessage.
+
+ExternalStorage.download(resource_id) to get bytes + mime type.
+
+Upload the bytes to a temporary file host such as tmpfiles.org to get a fetchable URL.
+
+Pass that URL to the external service.
+
+Return results via TextContent, or (if you produce a new asset) upload to ExternalStorage and return as ResourceContent.
+
+Minimal async helper:
+
+```python
+import httpx
+
+async def upload_bytes_to_tmpfiles(file_bytes: bytes, filename: str) -> str:
+    async with httpx.AsyncClient(timeout=60) as client:
+        files = {"file": (filename, file_bytes)}
+        r = await client.post("https://tmpfiles.org/api/v1/upload", files=files)
+        r.raise_for_status()
+        data = r.json()
+        url = data.get("data", {}).get("url") or data.get("url")
+        token = url.rstrip("/").split("/")[-1]
+        return f"https://tmpfiles.org/dl/{token}"
+```
+
+
+Tip: If results are files (e.g., a processed video), upload back to ExternalStorage, set permission for sender, and reply with a ResourceContent (same as the image generation pattern).
+
+CHECKLIST (before Cursor says “done”)
+
+ ChatMessage always includes timestamp (UTC), msg_id (UUID4), content (list).
+
+ Every inbound ChatMessage is ACKed (reference the original msg_id).
+
+ No protocol field names or literal values changed.
+
+ Hosted agent code uses only allowlisted libs; otherwise provide Mailbox/Local variant.
+
+ ExternalStorage operations wrapped in try/except with user-friendly fallbacks.
+
+ QuotaProtocol used where appropriate; window and limits env-configurable; ACL in place if needed.
+
+ Media workflows: image analysis and generation follow official patterns; video/audio staged to tmp URL when required.
+
+ README documents env vars, rate limits, and testing steps in Agentverse Chat UI.
+
+README — Required Badges (MCP-created agents)
+- At the very top of every MCP-generated agent README, include the following badges (colors may be adjusted if needed):
+
+```
+![tag:avmcp](https://img.shields.io/badge/avmcp-6C63FF)
+```
+
+HOW TO TEST (Hosted & Mailbox)
+
+Start/Connect the agent; for Mailbox, open the Inspector link from logs and connect as Mailbox.
+
+In Agentverse Chat with Agent, send a message containing StartSessionContent (UI often does this automatically).
+
+Verify you receive an ACK, and, if applicable, a MetadataContent indicating "attachments": "true".
+
+Send plain text; ensure response and ACK exchange occur.
+
+Attach an image; verify ExternalStorage.download and that the agent returns an analysis (TextContent).
+
+For generation flows, verify the agent returns ResourceContent where the asset is accessible to the requester due to correct permissions.
+(These steps reflect the behavior in the official examples.) 
+Fetch.ai Innovation Lab
+
+
+### Notes on sources
+- The Image Analysis and Image Generation sections (including ExternalStorage download/upload and returning ResourceContent, plus the required ACK and metadata behaviors) are based on Fetch’s Chat Protocol examples.
+- The agent creation distinctions (Hosted, Local, Mailbox) and high-level flow match the uAgent creation doc.
+
+---
+
+## MCP API Notes (learned from recent successes/failures)
+
+- Network parameter on creation: use `mainnet` or `testnet`. Do not send `hosted`.
+- Code upload shape: the `code` field must be a valid JSON string representing an array of files with fields `language`, `name`, and `value`. Example payload shape (stringified):
+  "[{\"language\":\"python\",\"name\":\"agent.py\",\"value\":\"from datetime import datetime\\n# ... rest of code ...\"}]"
+  - Ensure the entire array is a single JSON string. Escape newlines as `\n` and any double quotes within the code.
+- Start before code: Agent can be `running=true` even without uploaded/compiled code. Verify `code_digest` (non-null) or `compiled=true` where available before relying on runtime.
+- Logs endpoint quirks: `n` parameter may be strict-typed by the server. If rejected, omit it and fetch defaults.
+- Non-standard params: Some endpoints reject `no_cache`. Omit if not documented. If required, send proper boolean, not quoted.
+- Token format: The Agentverse API token must be the raw JWT string. If the UI shows it prefixed like `"av api <JWT>"`, strip the leading `"av api "` and provide only the `<JWT>`. Malformed or prefixed tokens typically cause HTTP 401 `Could not validate credentials`.
+- Transient errors: HTTP 500/"fetch failed" are often transient tunnel issues. Retry with exponential backoff (e.g., 0.5s, 1s, 2s, 4s).
+- Readme vs Code: `update_user_agent` updates metadata/readme; `update_user_agent_code` solely updates code bundle. Use each for its domain.
+
+Hosted vs Mailbox (ExternalStorage and secrets)
+- Hosted agents: use `ExternalStorage(identity=ctx.agent.identity, storage_url=STORAGE_URL)`; no `AGENTVERSE_API_KEY` needed. Ensure `AGENTVERSE_URL` is set (default `https://agentverse.ai`).
+- Mailbox/Local agents: use `ExternalStorage(api_token=AGENTVERSE_API_KEY, storage_url=STORAGE_URL)` and set `AGENTVERSE_API_KEY`.
+- Image generation flow: create_asset → set_permissions(sender) → reply with `ResourceContent` using `agent-storage://{storage_url}/{asset_id}`.
+
+Code upload format (single-file and multi-file)
+- The `code` field MUST be a JSON string representing an array of files. Each file object includes:
+  - `name`: filename (e.g., `"agent.py"`, `"models.py"`)
+  - `language`: language string (e.g., `"python"`)
+  - `value`: the full file contents, with newlines escaped as `\n` and quotes escaped
+  - Optional fields like `id` may be accepted by the API but are not required
+- Example (stringified JSON) with multiple files:
+  "[{\"language\":\"python\",\"name\":\"agent.py\",\"value\":\"from datetime import datetime\\n# ... code ...\"}, {\"language\":\"python\",\"name\":\"models.py\",\"value\":\"# helpers here\\n\"}]"
+- Do NOT embed real secrets in code defaults (e.g., avoid `os.getenv(\"TOKEN\", \"real-secret\")`).
+- Do NOT upload a real `.env` file with secrets in the code bundle. If you include an `.env` entry for documentation, ensure values are placeholders only. Hosted runtime will not read repo `.env`.
+
+Checklist augmentation
+- After `create`: record returned `address`, then `update_user_agent` (readme), then `update_user_agent_code` (code bundle), then `start`, then verify via `get_user_agent_details` that `code_digest` is set.
+- Hosted env secrets: production tokens (e.g., `REPLICATE_API_TOKEN`) should be set as Agentverse secrets or env in the Hosted runtime; otherwise the agent should reply with a friendly error about missing configuration.
+
+---
+
+## Secrets handling policy (temporary)
+- Do NOT create or update Agentverse secrets via MCP for now.
+- Store required keys in an `.env` file inside the agent directory (e.g., `hosted/.env` or `mailbox_or_local/.env`). Example keys:
+  - `REPLICATE_API_TOKEN=...`
+  - `AGENTVERSE_URL=https://agentverse.ai`
+  - (Mailbox/Local only) `AGENTVERSE_API_KEY=...`
+- Important: Agentverse Hosted runtime does NOT read repo `.env`. If deploying Hosted, do not auto-push secrets; replicate them manually in the Agentverse UI later. For development or mailbox/local runs, load from agent `.env`.
+- Never commit real secrets. Ensure `.env` paths are ignored by VCS.

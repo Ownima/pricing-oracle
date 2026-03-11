@@ -214,7 +214,11 @@ async def handle_price_post(req, query: PricingQuery) -> PricingResponse:
 
 
 # Create chat protocol for AgentVerse/ASI-One compatibility
-# Using manual protocol with 'chat' name that passes verification
+# Following AgentVerse rules: use Protocol(spec=chat_protocol_spec)
+from datetime import datetime, timezone
+from uuid import uuid4
+
+from uagents.experimental.quota import QuotaProtocol, RateLimit, AccessControlList
 from uagents_core.contrib.protocols.chat import (
     ChatAcknowledgement,
     ChatMessage,
@@ -222,6 +226,7 @@ from uagents_core.contrib.protocols.chat import (
     StartSessionContent,
     EndSessionContent,
     MetadataContent,
+    chat_protocol_spec,
 )
 
 from pricing_oracle.uagent.registration import (
@@ -230,28 +235,59 @@ from pricing_oracle.uagent.registration import (
     AGENT_README,
 )
 
-chat_protocol = Protocol("chat", "1.0")
+
+def _text(msg: str) -> ChatMessage:
+    """Create a text ChatMessage following AgentVerse rules."""
+    return ChatMessage(
+        timestamp=datetime.now(timezone.utc),
+        msg_id=uuid4(),
+        content=[TextContent(type="text", text=msg)],
+    )
 
 
-@chat_protocol.on_message(StartSessionContent)
+# Create quota-protected chat protocol
+chat_protocol = QuotaProtocol(
+    spec=chat_protocol_spec, storage_reference=pricing_agent.storage
+)
+
+
+@chat_protocol.on_message(
+    StartSessionContent,
+    rate_limit=RateLimit(window_size_minutes=1440, max_requests=1000),
+)
 async def handle_session_start(ctx: Context, sender: str, msg: StartSessionContent):
     """Handle session start from AgentVerse."""
     ctx.logger.info(f"Session started with {sender}")
+    await ctx.send(
+        sender,
+        _text(
+            "Hello! I'm the Pricing Oracle agent. Ask me about vehicle rental prices in Thailand or Vietnam."
+        ),
+    )
 
 
-@chat_protocol.on_message(EndSessionContent)
+@chat_protocol.on_message(
+    EndSessionContent,
+    rate_limit=RateLimit(window_size_minutes=1440, max_requests=1000),
+)
 async def handle_session_end(ctx: Context, sender: str, msg: EndSessionContent):
     """Handle session end from AgentVerse."""
     ctx.logger.info(f"Session ended with {sender}")
 
 
-@chat_protocol.on_message(MetadataContent)
+@chat_protocol.on_message(
+    MetadataContent,
+    rate_limit=RateLimit(window_size_minutes=1440, max_requests=1000),
+)
 async def handle_metadata(ctx: Context, sender: str, msg: MetadataContent):
     """Handle metadata from AgentVerse."""
     ctx.logger.info(f"Received metadata from {sender}: {msg.metadata}")
 
 
-@chat_protocol.on_message(ChatAcknowledgement)
+@chat_protocol.on_message(
+    ChatAcknowledgement,
+    rate_limit=RateLimit(window_size_minutes=1440, max_requests=1000),
+)
 async def handle_chat_acknowledgement(
     ctx: Context, sender: str, msg: ChatAcknowledgement
 ):
@@ -259,10 +295,22 @@ async def handle_chat_acknowledgement(
     ctx.logger.info(f"Received acknowledgment from {sender}: {msg}")
 
 
-@chat_protocol.on_message(ChatMessage)
+@chat_protocol.on_message(
+    ChatMessage,
+    rate_limit=RateLimit(window_size_minutes=1440, max_requests=100),
+)
 async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
     """Handle incoming chat messages from AgentVerse/ASI-One."""
     ctx.logger.info(f"Received chat message from {sender}: {msg}")
+
+    # Send acknowledgment first (required by chat protocol)
+    await ctx.send(
+        sender,
+        ChatAcknowledgement(
+            timestamp=datetime.now(timezone.utc),
+            acknowledged_msg_id=msg.msg_id,
+        ),
+    )
 
     # Extract text from ChatMessage content
     user_text = ""
@@ -272,25 +320,11 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
                 user_text = item.text
                 break
 
-    # Send acknowledgment (required by chat protocol)
-    await ctx.send(
-        sender,
-        ChatAcknowledgement(
-            timestamp=msg.timestamp,
-            acknowledged_msg_id=msg.msg_id,
-        ),
-    )
-
     if not user_text:
         await ctx.send(
             sender,
-            ChatMessage(
-                content=[
-                    TextContent(
-                        type="text",
-                        text="I couldn't understand your message. Try 'info' for documentation or 'scooter 150 market price' for pricing.",
-                    )
-                ]
+            _text(
+                "I couldn't understand your message. Try 'info' for documentation or 'scooter 150 market price' for pricing."
             ),
         )
         return
@@ -311,10 +345,7 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
         ]
     ):
         response_text = get_info_response()
-        await ctx.send(
-            sender,
-            ChatMessage(content=[TextContent(type="text", text=response_text)]),
-        )
+        await ctx.send(sender, _text(response_text))
         return
 
     action, category, tier = parse_chat_message(user_text)
@@ -326,10 +357,7 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
 
     response_text = format_price_response(action, category, tier)
 
-    await ctx.send(
-        sender,
-        ChatMessage(content=[TextContent(type="text", text=response_text)]),
-    )
+    await ctx.send(sender, _text(response_text))
 
 
 def get_info_response() -> str:
